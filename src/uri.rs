@@ -33,6 +33,14 @@ mod tests {
     use super::{Location, Uri, UriExt};
 
     #[test]
+    fn extends_empty_path() {
+        let base = "http://example.org".parse::<Uri>().unwrap();
+        let location = Location::new("/index.html");
+        let new = base.compute_redirect(&location).unwrap();
+        assert_eq!("http://example.org/index.html", new.as_ref());
+    }
+
+    #[test]
     fn retains_scheme_and_authority() {
         let base = "http://example.org/foo?x=1".parse::<Uri>().unwrap();
         let location = Location::new("/bar?y=1");
