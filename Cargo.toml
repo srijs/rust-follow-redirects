@@ -1,6 +1,6 @@
 [package]
 name = "follow-redirects"
-version = "0.1.0"
+version = "0.1.2"
 authors = ["Sam Rijs <srijs@airpost.net>"]
 description = "Extension for hyper to follow HTTP redirects"
 license = "MIT"
