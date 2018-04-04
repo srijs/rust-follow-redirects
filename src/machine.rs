@@ -70,10 +70,21 @@ impl StateMachine {
         }
         self.remaining_redirects -= 1;
         if let Some(location) = res.headers().get::<hyper::header::Location>() {
-            self.uri = self.uri.compute_redirect(location)?;
+            let next = self.uri.compute_redirect(location)?;
+            remove_sensitive_headers(&mut self.headers, &next, &self.uri);
+            self.uri = next;
             Ok(StateMachineDecision::Continue)
         } else {
             Ok(StateMachineDecision::Return)
         }
+    }
+}
+
+pub fn remove_sensitive_headers(headers: &mut Headers, next: &Uri, previous: &Uri) {
+    if !next.is_same_host(previous) {
+        headers.remove_raw("authorization");
+        headers.remove_raw("cookie");
+        headers.remove_raw("cookie2");
+        headers.remove_raw("www-authenticate");
     }
 }

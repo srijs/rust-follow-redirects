@@ -6,6 +6,7 @@ use hyper::header::Location;
 
 pub(crate) trait UriExt {
     fn compute_redirect(&self, location: &Location) -> Result<Uri, Error>;
+    fn is_same_host(&self, other: &Uri) -> bool;
 }
 
 impl UriExt for Uri {
@@ -25,6 +26,10 @@ impl UriExt for Uri {
         let absolute_new_uri = http::Uri::from_parts(new_parts)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         Ok(absolute_new_uri.to_string().parse::<Uri>()?)
+    }
+
+    fn is_same_host(&self, other: &Uri) -> bool {
+        self.host() == other.host() && self.port() == other.port()
     }
 }
 
