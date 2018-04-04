@@ -1,4 +1,4 @@
-# follow-redirects
+# follow-redirects [![Build Status](https://travis-ci.org/srijs/rust-follow-redirects.svg?branch=master)](https://travis-ci.org/srijs/rust-follow-redirects)
 
 Extension for `hyper` to follow HTTP redirects.
 
