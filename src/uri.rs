@@ -4,7 +4,7 @@ use http;
 use hyper::{Error, Uri};
 use hyper::header::Location;
 
-pub trait UriExt {
+pub(crate) trait UriExt {
     fn compute_redirect(&self, location: &Location) -> Result<Uri, Error>;
 }
 
