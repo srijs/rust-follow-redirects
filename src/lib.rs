@@ -80,6 +80,15 @@ pub struct Client<C, B> {
     max_redirects: usize
 }
 
+impl<C, B> Clone for Client<C, B> {
+    fn clone(&self) -> Client<C, B> {
+        Client {
+            inner: self.inner.clone(),
+            max_redirects: self.max_redirects
+        }
+    }
+}
+
 impl<C, B> fmt::Debug for Client<C, B> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Client")
