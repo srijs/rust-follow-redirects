@@ -1,6 +1,11 @@
-# follow-redirects [![Build Status](https://travis-ci.org/srijs/rust-follow-redirects.svg?branch=master)](https://travis-ci.org/srijs/rust-follow-redirects)
+# follow-redirects
 
 Extension for `hyper` to follow HTTP redirects.
+
+[Documentation](https://docs.rs/follow-redirects)
+
+[![Build Status](https://travis-ci.org/srijs/rust-follow-redirects.svg?branch=master)](https://travis-ci.org/srijs/rust-follow-redirects)
+[![crates.io](https://img.shields.io/crates/v/follow-redirects.svg)](https://crates.io/crates/follow-redirects)
 
 ## Example
 
