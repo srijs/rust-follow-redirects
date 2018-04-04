@@ -41,9 +41,11 @@ use futures::{Future, Poll, Stream};
 use hyper::{Error, Method, Request, Response, Uri};
 use hyper::client::{Connect, Service};
 
+mod uri;
 mod buffer;
 mod machine;
 mod future;
+
 use future::FutureInner;
 
 /// Extension trait for adding follow-redirect features to `hyper::Client`.

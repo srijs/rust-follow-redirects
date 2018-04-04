@@ -1,8 +1,7 @@
-use std::io;
-
 use bytes::Bytes;
-use http;
 use hyper::{self, Error, Headers, HttpVersion, Method, Request, Response, StatusCode, Uri};
+
+use ::uri::UriExt;
 
 pub(crate) struct StateMachine {
     method: Method,
@@ -70,27 +69,8 @@ impl StateMachine {
             return Ok(StateMachineDecision::Return);
         }
         self.remaining_redirects -= 1;
-        let opt_new_uri_res = res.headers().get::<hyper::header::Location>().map(|location| {
-            println!("location: {}", location);
-            location.parse::<http::Uri>()
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
-        });
-        if let Some(new_uri_res) = opt_new_uri_res {
-            println!("current uri {}", self.uri);
-            let new_uri = new_uri_res?;
-            let old_uri = self.uri.as_ref().parse::<http::Uri>()
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
-            let old_parts = http::uri::Parts::from(old_uri);
-            let mut new_parts = http::uri::Parts::from(new_uri);
-            if new_parts.scheme.is_none() {
-                new_parts.scheme = old_parts.scheme;
-            }
-            if new_parts.authority.is_none() {
-                new_parts.authority = old_parts.authority;
-            }
-            let absolute_new_uri = http::Uri::from_parts(new_parts)
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
-            self.uri = absolute_new_uri.to_string().parse::<Uri>()?;
+        if let Some(location) = res.headers().get::<hyper::header::Location>() {
+            self.uri = self.uri.compute_redirect(location)?;
             Ok(StateMachineDecision::Continue)
         } else {
             Ok(StateMachineDecision::Return)
