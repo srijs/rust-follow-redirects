@@ -2,11 +2,11 @@
 name = "follow-redirects"
 version = "0.1.0"
 authors = ["Sam Rijs <srijs@airpost.net>"]
-description = "Extension for `hyper` to follow HTTP redirects"
+description = "Extension for hyper to follow HTTP redirects"
 license = "MIT"
 repository = "https://github.com/srijs/rust-follow-redirects"
 documentation = "https://docs.rs/follow-redirects"
-keywords = ["hyper", "redirect", "follow", "location"]
+keywords = ["hyper", "http", "redirect", "follow", "location"]
 
 [dependencies]
 bytes = "0.4.6"
