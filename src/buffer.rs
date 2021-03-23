@@ -1,4 +1,3 @@
-
 use std::error::Error as StdError;
 use std::future::Future;
 use std::pin::Pin;
@@ -10,12 +9,15 @@ use hyper::Request;
 
 pub(crate) struct Buffer<B> {
     req: Request<B>,
-    buf: BytesMut
+    buf: BytesMut,
 }
 
 impl<B> From<Request<B>> for Buffer<B> {
     fn from(req: Request<B>) -> Buffer<B> {
-        Buffer { req, buf: BytesMut::new() }
+        Buffer {
+            req,
+            buf: BytesMut::new(),
+        }
     }
 }
 
@@ -25,32 +27,34 @@ impl<B> From<Request<B>> for Buffer<B> {
 /// returning early.
 #[macro_export]
 macro_rules! try_ready {
-    ($e:expr) => (match $e {
-        Poll::Ready(t) => t,
-        Poll::Pending => return Poll::Pending,
-    })
+    ($e:expr) => {
+        match $e {
+            Poll::Ready(t) => t,
+            Poll::Pending => return Poll::Pending,
+        }
+    };
 }
 
 impl<B> Future for Buffer<B>
 where
-		  B: HttpBody + From<Bytes> + Send + Unpin + 'static,
-		  	B::Data: Send,
-		  	B::Error: Into<Box<dyn StdError + Send + Sync>>, 
+    B: HttpBody + From<Bytes> + Send + Unpin + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
-	type Output = Result<Bytes, B::Error>;
+    type Output = Result<Bytes, B::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
-		let self_ref = self.get_mut();
+        let self_ref = self.get_mut();
         let body = self_ref.req.body_mut();
-		loop {
-			match try_ready!(HttpBody::poll_data(Pin::new(body), cx)) {
-				Some(Ok(chunk)) => self_ref.buf.extend_from_slice(chunk.chunk()),
-				Some(Err(e)) => return Poll::Ready(Err(e)),
-				None => {
-					let buf = ::std::mem::replace(&mut self_ref.buf, BytesMut::new());
-					return Poll::Ready(Ok(buf.freeze()));
-				}
-			}
-		}
+        loop {
+            match try_ready!(HttpBody::poll_data(Pin::new(body), cx)) {
+                Some(Ok(chunk)) => self_ref.buf.extend_from_slice(chunk.chunk()),
+                Some(Err(e)) => return Poll::Ready(Err(e)),
+                None => {
+                    let buf = ::std::mem::replace(&mut self_ref.buf, BytesMut::new());
+                    return Poll::Ready(Ok(buf.freeze()));
+                }
+            }
+        }
     }
 }

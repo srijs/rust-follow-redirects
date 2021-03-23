@@ -1,10 +1,9 @@
-
 use std::error::Error as StdError;
 
 use bytes::Bytes;
-use hyper::{self, Version, Method, Request, Response, StatusCode, Uri};
 use hyper::body::{Body, HttpBody};
 use hyper::header::HeaderMap;
+use hyper::{self, Method, Request, Response, StatusCode, Uri, Version};
 
 use crate::error::Error;
 use crate::uri::UriExt;
@@ -14,14 +13,14 @@ pub(crate) struct StateMachine {
     uri: Uri,
     version: Version,
     headers: HeaderMap,
-	// This is None while we are still receiving the request body.
+    // This is None while we are still receiving the request body.
     pub(crate) request_body: Option<Bytes>,
-    remaining_redirects: usize
+    remaining_redirects: usize,
 }
 
 pub(crate) enum StateMachineDecision {
     Continue,
-    Return
+    Return,
 }
 
 impl StateMachine {
@@ -32,7 +31,7 @@ impl StateMachine {
             version: req.version(),
             headers: HeaderMap::new(),
             request_body: None,
-            remaining_redirects: max_redirects
+            remaining_redirects: max_redirects,
         };
         state.headers = ::std::mem::replace(req.headers_mut(), HeaderMap::new());
         state
@@ -44,28 +43,24 @@ impl StateMachine {
 
     pub fn create_request<B: From<Bytes>>(&self) -> Result<Request<B>, Error> {
         Ok(Request::builder()
-			.method(self.method.clone())
-			.uri(self.uri.clone())
-			.version(self.version)
-			.body(self.request_body.clone().unwrap_or_default().into())?)
+            .method(self.method.clone())
+            .uri(self.uri.clone())
+            .version(self.version)
+            .body(self.request_body.clone().unwrap_or_default().into())?)
     }
 
     pub fn handle_response(&mut self, res: &Response<Body>) -> Result<StateMachineDecision, Error> {
         match res.status() {
             StatusCode::MOVED_PERMANENTLY | StatusCode::PERMANENT_REDIRECT => {
                 self.follow_redirect(res)
-            },
-            StatusCode::FOUND | StatusCode::TEMPORARY_REDIRECT => {
-                self.follow_redirect(res)
-            },
+            }
+            StatusCode::FOUND | StatusCode::TEMPORARY_REDIRECT => self.follow_redirect(res),
             StatusCode::SEE_OTHER => {
                 self.method = Method::GET;
                 self.request_body = None;
                 self.follow_redirect(res)
-            },
-            _ => {
-                Ok(StateMachineDecision::Return)
             }
+            _ => Ok(StateMachineDecision::Return),
         }
     }
 

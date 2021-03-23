@@ -1,8 +1,8 @@
 use std::io;
 
+use hyper::header::HeaderValue;
 use hyper::http;
 use hyper::Uri;
-use hyper::header::HeaderValue;
 
 use crate::error::Error;
 
@@ -13,7 +13,7 @@ pub(crate) trait UriExt {
 
 impl UriExt for Uri {
     fn compute_redirect(&self, location: &HeaderValue) -> Result<Uri, Error> {
-		//TODO(stevenroose) fix errors
+        //TODO(stevenroose) fix errors
         let new_uri = location.to_str().unwrap_or("").parse::<Uri>().expect("TODO");
         let old_parts = self.clone().into_parts();
         let mut new_parts = new_uri.into_parts();

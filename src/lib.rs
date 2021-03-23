@@ -62,27 +62,26 @@
 #![deny(missing_docs)]
 //TODO(stevenroose) #![deny(warnings)]
 #![deny(missing_debug_implementations)]
-
 //TODO(stevenroose) remove
 #![allow(unused)]
 
+use std::error::Error as StdError;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{self, Poll};
-use std::error::Error as StdError;
 
 use bytes::Bytes;
-use hyper::{Body, Method, Request, Response, Uri};
 use hyper::body::HttpBody;
 use hyper::client::connect::Connect;
 use hyper::service::Service;
+use hyper::{Body, Method, Request, Response, Uri};
 
-mod uri;
 mod buffer;
 mod error;
-mod machine;
 mod future;
+mod machine;
+mod uri;
 
 use crate::error::Error;
 use crate::future::FutureInner;
@@ -119,32 +118,30 @@ impl<C: Clone, B> ClientExt<C, B> for hyper::Client<C, B> {
 /// via the `set_max_redirects` method.
 pub struct Client<C, B> {
     inner: hyper::Client<C, B>,
-    max_redirects: usize
+    max_redirects: usize,
 }
 
 impl<C: Clone, B> Clone for Client<C, B> {
     fn clone(&self) -> Client<C, B> {
         Client {
             inner: self.inner.clone(),
-            max_redirects: self.max_redirects
+            max_redirects: self.max_redirects,
         }
     }
 }
 
 impl<C, B> fmt::Debug for Client<C, B> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Client")
-            .field("max_redirects", &self.max_redirects)
-            .finish()
+        f.debug_struct("Client").field("max_redirects", &self.max_redirects).finish()
     }
 }
 
 impl<C, B> Client<C, B>
 where
     C: Connect + Clone + Send + Unpin + Sync + 'static,
-		  B: HttpBody + From<Bytes> + Unpin + Send + 'static,
-		  	B::Data: Send,
-		  	B::Error: Into<Box<dyn StdError + Send + Sync>>, 
+    B: HttpBody + From<Bytes> + Unpin + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     /// Send a GET Request using this client.
     pub fn get(&self, url: Uri) -> ResponseFuture {
@@ -157,9 +154,9 @@ where
 impl<C, B> Client<C, B>
 where
     C: Connect + Clone + Send + Sync + Unpin + 'static,
-		  B: HttpBody + From<Bytes> + Send + Unpin + 'static,
-		  	B::Data: Send,
-		  	B::Error: Into<Box<dyn StdError + Send + Sync>>, 
+    B: HttpBody + From<Bytes> + Send + Unpin + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     /// Send a constructed Request using this client.
     pub fn request(&self, req: Request<B>) -> ResponseFuture {
@@ -184,9 +181,9 @@ impl<C, B> Client<C, B> {
 impl<C, B> Service<Request<B>> for Client<C, B>
 where
     C: Connect + Clone + Send + Unpin + Sync + 'static,
-		B: HttpBody + From<Bytes> + Send + Unpin + 'static,
-			B::Data: Send,
-			B::Error: Into<Box<dyn StdError + Send + Sync>>, 
+    B: HttpBody + From<Bytes> + Send + Unpin + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     type Response = Response<Body>;
     type Error = Error;
@@ -202,7 +199,9 @@ where
 }
 
 /// A `Future` that will resolve to an HTTP Response.
-pub struct ResponseFuture(Pin<Box<dyn Future<Output=Result<Response<Body>, Error>> + Send + 'static>>);
+pub struct ResponseFuture(
+    Pin<Box<dyn Future<Output = Result<Response<Body>, Error>> + Send + 'static>>,
+);
 
 impl fmt::Debug for ResponseFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -211,7 +210,7 @@ impl fmt::Debug for ResponseFuture {
 }
 
 impl Future for ResponseFuture {
-	type Output = Result<Response<Body>, Error>;
+    type Output = Result<Response<Body>, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         Future::poll(Pin::new(&mut self.get_mut().0), cx)
