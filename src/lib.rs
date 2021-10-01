@@ -46,50 +46,46 @@
 //! # Example
 //!
 //! ```rust
-//! extern crate hyper;
-//! extern crate follow_redirects;
-//! # extern crate tokio_core;
-//!
 //! // 1. import the extension trait
 //! use follow_redirects::ClientExt;
 //!
-//! # fn main() {
-//! # let core = tokio_core::reactor::Core::new().unwrap();
-//! # let handle = core.handle();
 //! // ...
 //! // 2. create a standard hyper client
-//! let client = hyper::Client::new(&handle);
+//! let client = hyper::Client::new();
 //!
 //! // ...
 //! // 3. make a request that will follow redirects
 //! let url = "http://docs.rs/hyper".parse().unwrap();
 //! let future = client.follow_redirects().get(url);
-//! # drop(future);
-//! # }
 //! ```
 
 #![deny(missing_docs)]
 #![deny(warnings)]
 #![deny(missing_debug_implementations)]
 
-extern crate bytes;
-#[macro_use] extern crate futures;
-extern crate http;
-extern crate hyper;
-
+use std::error::Error as StdError;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{self, Poll};
 
 use bytes::Bytes;
-use futures::{Future, Poll, Stream};
-use hyper::{Error, Method, Request, Response, Uri};
-use hyper::client::{Connect, Service};
+use hyper::body::HttpBody;
+use hyper::client::connect::Connect;
+use hyper::service::Service;
+use hyper::{Body, Request, Response, Uri};
 
-mod uri;
 mod buffer;
-mod machine;
+mod error;
 mod future;
+mod machine;
+mod uri;
 
-use future::FutureInner;
+use crate::error::Error;
+use crate::future::FutureInner;
+
+/// The default limit on number of redirects to follow.
+pub const DEFAULT_MAX_REDIRECTS: usize = 10;
 
 /// Extension trait for adding follow-redirect features to `hyper::Client`.
 pub trait ClientExt<C, B> {
@@ -105,11 +101,11 @@ pub trait ClientExt<C, B> {
     }
 }
 
-impl<C, B> ClientExt<C, B> for hyper::Client<C, B> {
+impl<C: Clone, B> ClientExt<C, B> for hyper::Client<C, B> {
     fn follow_redirects(&self) -> Client<C, B> {
         Client {
             inner: self.clone(),
-            max_redirects: 10
+            max_redirects: DEFAULT_MAX_REDIRECTS,
         }
     }
 }
@@ -120,43 +116,58 @@ impl<C, B> ClientExt<C, B> for hyper::Client<C, B> {
 /// via the `set_max_redirects` method.
 pub struct Client<C, B> {
     inner: hyper::Client<C, B>,
-    max_redirects: usize
+    max_redirects: usize,
 }
 
-impl<C, B> Clone for Client<C, B> {
+impl<C: Clone, B> Clone for Client<C, B> {
     fn clone(&self) -> Client<C, B> {
         Client {
             inner: self.inner.clone(),
-            max_redirects: self.max_redirects
+            max_redirects: self.max_redirects,
         }
     }
 }
 
 impl<C, B> fmt::Debug for Client<C, B> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Client")
-            .field("max_redirects", &self.max_redirects)
-            .finish()
+        f.debug_struct("Client").field("max_redirects", &self.max_redirects).finish()
     }
 }
 
 impl<C, B> Client<C, B>
-    where C: Connect,
-          B: Stream<Error = Error> + From<Bytes> + 'static,
-          B::Item: AsRef<[u8]>
+where
+    C: Connect + Clone + Send + Unpin + Sync + 'static,
+    B: HttpBody + From<Bytes> + Unpin + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     /// Send a GET Request using this client.
-    pub fn get(&self, url: Uri) -> FutureResponse {
-        self.request(Request::new(Method::Get, url))
+    pub fn get(&self, url: Uri) -> ResponseFuture {
+        let mut req = Request::new(Bytes::new().into());
+        *req.uri_mut() = url;
+        self.request(req)
     }
+}
 
+impl<C, B> Client<C, B>
+where
+    C: Connect + Clone + Send + Sync + Unpin + 'static,
+    B: HttpBody + From<Bytes> + Send + Unpin + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
     /// Send a constructed Request using this client.
-    pub fn request(&self, req: Request<B>) -> FutureResponse {
-        FutureResponse(Box::new(FutureInner::new(self.inner.clone(), req, self.max_redirects)))
+    pub fn request(&self, req: Request<B>) -> ResponseFuture {
+        ResponseFuture(Box::pin(FutureInner::new(self.inner.clone(), req, self.max_redirects)))
     }
 }
 
 impl<C, B> Client<C, B> {
+    /// Get the maximum number of redirects the client will follow before giving up.
+    pub fn max_redirects(&self) -> usize {
+        self.max_redirects
+    }
+
     /// Set the maximum number of redirects the client will follow before giving up.
     ///
     /// By default, this limit is set to 10.
@@ -165,35 +176,41 @@ impl<C, B> Client<C, B> {
     }
 }
 
-impl<C, B> Service for Client<C, B>
-    where C: Connect,
-          B: Stream<Error = Error> + From<Bytes> + 'static,
-          B::Item: AsRef<[u8]>
+impl<C, B> Service<Request<B>> for Client<C, B>
+where
+    C: Connect + Clone + Send + Unpin + Sync + 'static,
+    B: HttpBody + From<Bytes> + Send + Unpin + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
-    type Request = Request<B>;
-    type Response = Response;
+    type Response = Response<Body>;
     type Error = Error;
-    type Future = FutureResponse;
+    type Future = ResponseFuture;
 
-    fn call(&self, req: Request<B>) -> FutureResponse {
+    fn poll_ready(&mut self, _: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Request<B>) -> ResponseFuture {
         self.request(req)
     }
 }
 
 /// A `Future` that will resolve to an HTTP Response.
-pub struct FutureResponse(Box<Future<Item=Response, Error=Error>>);
+pub struct ResponseFuture(
+    Pin<Box<dyn Future<Output = Result<Response<Body>, Error>> + Send + 'static>>,
+);
 
-impl fmt::Debug for FutureResponse {
+impl fmt::Debug for ResponseFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.pad("Future<Response>")
+        f.pad("ResponseFuture")
     }
 }
 
-impl Future for FutureResponse {
-    type Item = Response;
-    type Error = Error;
+impl Future for ResponseFuture {
+    type Output = Result<Response<Body>, Error>;
 
-    fn poll(&mut self) -> Poll<Response, Error> {
-        self.0.poll()
+    fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
+        Future::poll(Pin::new(&mut self.get_mut().0), cx)
     }
 }
